@@ -1,0 +1,97 @@
+EXP_PATH: &PATH experiments/exp_test
+
+PRETRAINED:
+  USE_PRETRAINED: False
+  # PRETRAINED_FOLDER: models/ind_v3_multinet
+  # PRETRAINED_FOLDER: egs/Nonhomogeneous_Image_Dehazing/exp1/models/
+  PRETRAINED_MODEL: /home/fedynyak/NTIRE2021/exp1/models/mutipatch_v-2.pkl
+
+TRAINSETS:
+  
+  DATASETS:
+    DATASET1:
+      ALREADY_CROPED: True
+      ORIG_DATA_FREE: data/NTIRE2021-HAZE/GT
+      ORIG_DATA_HAZY: data/NTIRE2021-HAZE/hazy
+      CROPED_DATA_FREE: !join [*PATH, NTIRE2021-HAZE/GT]
+      CROPED_DATA_HAZY: !join [*PATH, NTIRE2021-HAZE/hazy]
+      CROP_TIMES: 10
+      BATCH_SIZE : 24
+      NUM_WORKERS: 10
+
+    DATASET2:
+      ALREADY_CROPED: True
+      ORIG_DATA_FREE: data/DENSE-HAZE/GT
+      ORIG_DATA_HAZY: data/DENSE-HAZE/hazy
+      CROPED_DATA_FREE: !join [*PATH, DENSE-HAZE/GT]
+      CROPED_DATA_HAZY: !join [*PATH, DENSE-HAZE/hazy]
+      CROP_TIMES: 10
+      BATCH_SIZE : 24
+      NUM_WORKERS: 10
+    
+    # DATASET3:
+    #   ALREADY_CROPED: True
+    #   ORIG_DATA_FREE: data/I-HAZE-RESCALED/GT
+    #   ORIG_DATA_HAZY: data/I-HAZE-RESCALED/hazy
+    #   CROPED_DATA_FREE: !join [*PATH, I-HAZE/GT]
+    #   CROPED_DATA_HAZY: !join [*PATH, I-HAZE/hazy]
+    #   CROP_TIMES: 10
+    #   BATCH_SIZE : 40
+    #   NUM_WORKERS: 10
+
+    # DATASET4:
+    #   ALREADY_CROPED: True
+    #   ORIG_DATA_FREE: data/O-HAZE-RESCALED/GT
+    #   ORIG_DATA_HAZY: data/O-HAZE-RESCALED/hazy
+    #   CROPED_DATA_FREE: !join [*PATH, O-HAZE/GT]
+    #   CROPED_DATA_HAZY: !join [*PATH, O-HAZE/hazy]
+    #   CROP_TIMES: 10
+    #   BATCH_SIZE : 40
+    #   NUM_WORKERS: 10
+
+    DATASET5:
+      ALREADY_CROPED: True
+      ORIG_DATA_FREE: data/NH-HAZE/GT
+      ORIG_DATA_HAZY: data/NH-HAZE/hazy
+      CROPED_DATA_FREE: !join [*PATH, NH-HAZE/GT]
+      CROPED_DATA_HAZY: !join [*PATH, NH-HAZE/hazy]
+      CROP_TIMES: 10
+      BATCH_SIZE : 24
+      NUM_WORKERS: 10
+
+TRAINING:
+  GPU: 0
+  LEARNING_RATE: 0.0001
+  EPOCHS: 300
+  START_EPOCH: 1
+  LOGGING_FREQ: 25
+
+
+TESTING:
+  DATA_HAZY: data/valid_set
+  DEHAZED_PATH: exp2/dehazed/
+  EPOCH_FREQ: 1
+
+
+VALIDATION:
+  EPOCH_FREQ: 1
+  DATASETS:
+    NTIRE2020:
+      DATA_FREE: data/NH-HAZE/GT
+      DATA_HAZY: data/NH-HAZE/hazy
+    NTIRE2021:
+      DATA_FREE: data/NTIRE2021-HAZE/GT
+      DATA_HAZY: data/NTIRE2021-HAZE/hazy
+    DENSE-HAZE:
+      DATA_FREE: data/DENSE-HAZE/GT
+      DATA_HAZY: data/DENSE-HAZE/hazy
+    # O-HAZE:
+    #   DATA_FREE: data/O-HAZE-RESCALED/GT
+    #   DATA_HAZY: data/O-HAZE-RESCALED/hazy
+    # I-HAZE:
+    #   DATA_FREE: data/I-HAZE-RESCALED/GT
+    #   DATA_HAZY: data/I-HAZE-RESCALED/hazy
+
+
+MODEL_SAVING:
+  SAVING_FOLDER: exp2/models

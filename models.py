@@ -3,21 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class StackedMultiPatch(nn.Module):
-    def __init__(self):
-        super(StackedMultiPatch, self).__init__()
-
-        self.subnet1 = MultiPatch()
-        self.subnet2 = MultiPatch()
-
-    def forward(self, x):
-
-        x = self.subnet1(x)
-        x = self.subnet2(x)
-
-        return x
-
-
 class MultiPatch(nn.Module):
     def __init__(self):
         super(MultiPatch, self).__init__()
@@ -234,3 +219,27 @@ class DoubleMultiPatchExtended(nn.Module):
         x, a, b = self.first(x)
         y, c, d = self.second(x, a, b)
         return x, y
+
+
+class DehazerColorer(nn.Module):
+    def __init__(self):
+        super(DehazerColorer, self).__init__()
+
+        self.dehazer = MultiPatch()
+        self.colorer = MultiPatch()
+
+        self.colorer.encoder_lv1.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+        self.colorer.encoder_lv2.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+        self.colorer.encoder_lv3.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+
+        self.colorer.decoder_lv1.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+        self.colorer.decoder_lv2.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+        self.colorer.decoder_lv3.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+
+        self.final = nn.Conv2d(6, 3, kernel_size=3, padding=1)
+    
+    def forward(self, x):
+        dehazed = self.dehazer(x)
+        united = torch.cat([dehazed, x], 1)
+        final = self.final(self.colorer(united))
+        return final
