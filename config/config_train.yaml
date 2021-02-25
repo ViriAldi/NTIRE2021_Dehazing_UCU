@@ -4,7 +4,7 @@ PRETRAINED:
   USE_PRETRAINED: False
   # PRETRAINED_FOLDER: models/ind_v3_multinet
   # PRETRAINED_FOLDER: egs/Nonhomogeneous_Image_Dehazing/exp1/models/
-  PRETRAINED_MODEL: /home/fedynyak/NTIRE2021/exp1/models/mutipatch_v-2.pkl
+  PRETRAINED_MODEL: /home/fedynyak/NTIRE2021/models/hybrid_v1.pkl
 
 TRAINSETS:
   
@@ -15,19 +15,19 @@ TRAINSETS:
       ORIG_DATA_HAZY: data/NTIRE2021-HAZE/hazy
       CROPED_DATA_FREE: !join [*PATH, NTIRE2021-HAZE/GT]
       CROPED_DATA_HAZY: !join [*PATH, NTIRE2021-HAZE/hazy]
-      CROP_TIMES: 10
-      BATCH_SIZE : 24
+      CROP_TIMES: 1
+      BATCH_SIZE : 4
       NUM_WORKERS: 10
 
-    DATASET2:
-      ALREADY_CROPED: True
-      ORIG_DATA_FREE: data/DENSE-HAZE/GT
-      ORIG_DATA_HAZY: data/DENSE-HAZE/hazy
-      CROPED_DATA_FREE: !join [*PATH, DENSE-HAZE/GT]
-      CROPED_DATA_HAZY: !join [*PATH, DENSE-HAZE/hazy]
-      CROP_TIMES: 10
-      BATCH_SIZE : 24
-      NUM_WORKERS: 10
+    # DATASET2:
+    #   ALREADY_CROPED: True
+    #   ORIG_DATA_FREE: data/DENSE-HAZE/GT
+    #   ORIG_DATA_HAZY: data/DENSE-HAZE/hazy
+    #   CROPED_DATA_FREE: !join [*PATH, DENSE-HAZE/GT]
+    #   CROPED_DATA_HAZY: !join [*PATH, DENSE-HAZE/hazy]
+    #   CROP_TIMES: 2
+    #   BATCH_SIZE : 2
+    #   NUM_WORKERS: 10
     
     # DATASET3:
     #   ALREADY_CROPED: True
@@ -35,8 +35,8 @@ TRAINSETS:
     #   ORIG_DATA_HAZY: data/I-HAZE-RESCALED/hazy
     #   CROPED_DATA_FREE: !join [*PATH, I-HAZE/GT]
     #   CROPED_DATA_HAZY: !join [*PATH, I-HAZE/hazy]
-    #   CROP_TIMES: 10
-    #   BATCH_SIZE : 40
+    #   CROP_TIMES: 2
+    #   BATCH_SIZE : 2
     #   NUM_WORKERS: 10
 
     # DATASET4:
@@ -49,32 +49,32 @@ TRAINSETS:
     #   BATCH_SIZE : 40
     #   NUM_WORKERS: 10
 
-    DATASET5:
-      ALREADY_CROPED: True
-      ORIG_DATA_FREE: data/NH-HAZE/GT
-      ORIG_DATA_HAZY: data/NH-HAZE/hazy
-      CROPED_DATA_FREE: !join [*PATH, NH-HAZE/GT]
-      CROPED_DATA_HAZY: !join [*PATH, NH-HAZE/hazy]
-      CROP_TIMES: 10
-      BATCH_SIZE : 24
-      NUM_WORKERS: 10
+    # DATASET5:
+    #   ALREADY_CROPED: True
+    #   ORIG_DATA_FREE: data/NH-HAZE/GT
+    #   ORIG_DATA_HAZY: data/NH-HAZE/hazy
+    #   CROPED_DATA_FREE: !join [*PATH, NH-HAZE/GT]
+    #   CROPED_DATA_HAZY: !join [*PATH, NH-HAZE/hazy]
+    #   CROP_TIMES: 10
+    #   BATCH_SIZE : 24
+    #   NUM_WORKERS: 10
 
 TRAINING:
   GPU: 0
   LEARNING_RATE: 0.0001
   EPOCHS: 300
   START_EPOCH: 1
-  LOGGING_FREQ: 25
+  LOGGING_FREQ: 4
 
 
 TESTING:
   DATA_HAZY: data/valid_set
   DEHAZED_PATH: exp2/dehazed/
-  EPOCH_FREQ: 1
+  EPOCH_FREQ: 3
 
 
 VALIDATION:
-  EPOCH_FREQ: 1
+  EPOCH_FREQ: 500
   DATASETS:
     NTIRE2020:
       DATA_FREE: data/NH-HAZE/GT

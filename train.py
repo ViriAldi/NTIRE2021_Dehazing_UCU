@@ -13,7 +13,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, datasets
 from datasets import NH_HazeDataset
 import time
-from loss import CustomLoss_function
+from loss import ssimLoss, psnrLoss, CustomLoss_function
 from patcher import patch, convert
 import yaml
 import metrics
@@ -42,13 +42,14 @@ def train(config):
     LEARNING_RATE=config["TRAINING"]["LEARNING_RATE"]
     EPOCHS=config["TRAINING"]["EPOCHS"]
     
-    # model = nn.DataParallel(models.DoubleMultiPatchExtended().cuda(GPU))
-    model = nn.DataParallel(models.DehazerColorer().cuda(GPU))
+    model = models.SuperHybrid("/home/fedynyak/NTIRE2021/models/hybrid_v2.pkl", "/home/fedynyak/NTIRE2021/models/colorer_dehazer_v1/mutipatch_v-3.pkl")
+    model = nn.DataParallel(model.cuda(GPU))
+
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = StepLR(optimizer, step_size=25, gamma=0.2)
+    scheduler = StepLR(optimizer, step_size=25, gamma=0.6)
 
     if config["PRETRAINED"]["USE_PRETRAINED"]:
-        model.load_state_dict(torch.load(os.path.join(config["PRETRAINED"]["PRETRAINED_MODEL"])))
+        model.load_state_dict(torch.load(config["PRETRAINED"]["PRETRAINED_MODEL"]))
 
     writer = SummaryWriter()
     glob_id = 0
@@ -78,13 +79,14 @@ def train(config):
         
         for iteration, images in enumerate(train_dataloader):
 
-            custom_loss_fn1 = CustomLoss_function().cuda(GPU)
+            custom_loss_fn1 = nn.MSELoss().cuda(GPU)
             
             gt = Variable(images['dehazed_image'] - 0.5).cuda(GPU) 
             images_lv1 = Variable(images['hazed_image'] - 0.5).cuda(GPU)
-            dehazed = model(images_lv1)
 
-            loss = custom_loss_fn1(dehazed, gt)
+            final = model(images_lv1)
+
+            loss = custom_loss_fn1(final, gt)
 
             model.zero_grad()
             loss.backward()
@@ -106,7 +108,7 @@ def train(config):
         if not os.path.exists(config["MODEL_SAVING"]["SAVING_FOLDER"]):
             os.makedirs(config["MODEL_SAVING"]["SAVING_FOLDER"])
 
-        torch.save(model.state_dict(), os.path.join(config["MODEL_SAVING"]["SAVING_FOLDER"], "mutipatch_v-3.pkl"))
+        torch.save(model.state_dict(), os.path.join(config["MODEL_SAVING"]["SAVING_FOLDER"], "hybrid_v1.pkl"))
 
         scheduler.step()
 
@@ -134,6 +136,7 @@ def test(config, model, epoch=-1):
     for iteration, images in enumerate(test_dataloader):
         with torch.no_grad():                                   
             images_lv1 = Variable(images['hazed_image'] - 0.5).cuda(config["TRAINING"]["GPU"])
+
             dehazed_image = model(images_lv1)
 
             if not os.path.exists(os.path.join(config["TESTING"]["DEHAZED_PATH"], f"epoch{epoch}")):
@@ -169,8 +172,9 @@ def validate(config, model, writer, epoch=-1):
 
         for iteration, images in enumerate(valid_dataloader):
             with torch.no_grad():
-                gt = Variable(images['dehazed_image'] - 0.5).cuda(config["TRAINING"]["GPU"])                        
+                gt = Variable(images['dehazed_image'] - 0.5).cuda(config["TRAINING"]["GPU"]) 
                 images_lv1 = Variable(images['hazed_image'] - 0.5).cuda(config["TRAINING"]["GPU"])
+
                 final_result = model(images_lv1)
 
                 final_result += 0.5

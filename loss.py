@@ -4,6 +4,34 @@ from torchvision.models.vgg import vgg16
 from skimage.measure import compare_psnr, compare_ssim
 import pytorch_ssim
 from torch.autograd import Variable
+import metrics
+
+
+class ssimLoss(nn.Module):
+    def __init__(self):
+        super(ssimLoss, self).__init__()
+
+    def forward(self, out_image, target_image):
+        ans = 0
+        for x, y in zip(out_image, target_image):
+            x = torch.unsqueeze(x, 0)
+            y = torch.unsqueeze(y, 0)
+            ans += 1 - metrics.ssim(x, y)
+        return ans
+
+
+class psnrLoss(nn.Module):
+    def __init__(self):
+        super(psnrLoss, self).__init__()
+
+    def forward(self, out_image, target_image):
+        ans = 0
+        for x, y in zip(out_image, target_image):
+            x = torch.unsqueeze(x, 0)
+            y = torch.unsqueeze(y, 0)
+            ans += -metrics.psnr(x, y)
+        return ans
+
 
 class CustomLoss_function(nn.Module):
     def __init__(self):
