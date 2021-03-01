@@ -1,5 +1,5 @@
 EXP_PATH: &PATH experiments/exp_test
-MODEL: models/ind_v5_pc/mutipatch_v2.pkl
+MODEL: models/hybrid_v1.pkl
 
 TESTING:
   NTIRE2020:

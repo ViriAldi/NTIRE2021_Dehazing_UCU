@@ -42,7 +42,7 @@ def test(model, dataset, name):
     for iteration, images in enumerate(test_dataloader):
         with torch.no_grad():                                   
             image = (images['hazed_image'] - 0.5).cuda()
-            _, dehazed_image = model(image)
+            dehazed_image = model(image)
 
             if not os.path.exists(dataset["OUTPUT_FOLDER"]):
                 os.makedirs(dataset["OUTPUT_FOLDER"])
@@ -70,36 +70,26 @@ def validate(model, dataset, name):
         shuffle=False
     )
 
-    first_ssim = 0
     second_ssim = 0
-
-    first_psnr = 0
     second_psnr = 0
 
     for image in valid_dataloader:
         with torch.no_grad():
             gt = (image['dehazed_image'] - 0.5).cuda()                        
             image = (image['hazed_image'] - 0.5).cuda()
-            middle_result, final_result = model(image)
+            final_result = model(image)
 
-            middle_result += 0.5
             final_result += 0.5
             gt += 0.5
 
-            first_psnr += metrics.psnr(middle_result, gt)
             second_psnr += metrics.psnr(final_result, gt)
-
-            first_ssim += metrics.ssim(middle_result, gt)
             second_ssim += metrics.ssim(final_result, gt)
 
-    first_ssim = round(100 * first_ssim.item() / len(valid_dataset), 1)
     second_ssim = round(100 * second_ssim.item() / len(valid_dataset), 1)
-
-    first_psnr = round(first_psnr.item() / len(valid_dataset), 1)
     second_psnr = round(second_psnr.item() / len(valid_dataset), 1)
 
-    print(f"{name} dataset SSIM score {first_ssim}% and {second_ssim}%")
-    print(f"{name} dataset PSNR score {first_psnr}db and {second_psnr}db")
+    print(f"{name} dataset SSIM score {second_ssim}%")
+    print(f"{name} dataset PSNR score {second_psnr}db")
 
 
 def test_and_validate(config, model):
@@ -112,7 +102,7 @@ def test_and_validate(config, model):
 
 if __name__ == "__main__":
     config = read_config("config/config_test.yaml")
-    model = nn.DataParallel(models.DoubleMultiPatchExtended().cuda())
+    model = nn.DataParallel(models.SuperHybrid().cuda())
     model.load_state_dict(torch.load(config["MODEL"]))
 
     test_and_validate(config, model)

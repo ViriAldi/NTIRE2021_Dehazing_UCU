@@ -7,6 +7,16 @@ from torch.autograd import Variable
 import metrics
 
 
+class colorLoss(nn.Module):
+    def __init__(self, radius=20):
+        super(colorLoss, self).__init__()
+        self.l2 = nn.MSELoss()
+
+    def forward(self, out_image, target_image):
+        
+        return self.l2(out_image, target_image)
+
+
 class ssimLoss(nn.Module):
     def __init__(self):
         super(ssimLoss, self).__init__()

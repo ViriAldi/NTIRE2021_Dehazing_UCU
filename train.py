@@ -42,8 +42,14 @@ def train(config):
     LEARNING_RATE=config["TRAINING"]["LEARNING_RATE"]
     EPOCHS=config["TRAINING"]["EPOCHS"]
     
-    model = models.SuperHybrid("/home/fedynyak/NTIRE2021/models/hybrid_v2.pkl", "/home/fedynyak/NTIRE2021/models/colorer_dehazer_v1/mutipatch_v-3.pkl")
-    model = nn.DataParallel(model.cuda(GPU))
+    model = models.MultiPatch(pathes={
+        "encoder_lv1": "models/ind_v0/encoder_lv1.pkl",
+        "encoder_lv2": "models/ind_v0/encoder_lv2.pkl",
+        "encoder_lv3": "models/ind_v0/encoder_lv3.pkl",
+        "decoder_lv1": "models/ind_v0/decoder_lv1.pkl",
+        "decoder_lv2": "models/ind_v0/decoder_lv2.pkl",
+        "decoder_lv3": "models/ind_v0/decoder_lv3.pkl",
+    }).cuda()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = StepLR(optimizer, step_size=25, gamma=0.6)
@@ -76,17 +82,21 @@ def train(config):
             shuffle=True, 
             num_workers=dset["NUM_WORKERS"]
         )
+
+        ls = 0
+        print(f"NEW EPOCH!")
         
         for iteration, images in enumerate(train_dataloader):
 
-            custom_loss_fn1 = nn.MSELoss().cuda(GPU)
+            custom_loss_fn = CustomLoss_function().cuda(GPU)
             
             gt = Variable(images['dehazed_image'] - 0.5).cuda(GPU) 
             images_lv1 = Variable(images['hazed_image'] - 0.5).cuda(GPU)
 
             final = model(images_lv1)
 
-            loss = custom_loss_fn1(final, gt)
+            loss = custom_loss_fn(final, gt)
+            ls += loss
 
             model.zero_grad()
             loss.backward()
@@ -97,7 +107,7 @@ def train(config):
             glob_id += 1
             
             if (iteration + 1) % config["TRAINING"]["LOGGING_FREQ"] == 0:
-                print("epoch:", epoch, "iteration:", iteration + 1, "loss1: %.4f" % loss.item())
+                print("epoch:", epoch, "iteration:", iteration + 1, f"loss avg: {round(ls.item() / (iteration + 1), 4)}")
         
         if epoch % config["TESTING"]["EPOCH_FREQ"] == 0:
             test(config, model, epoch)
@@ -108,7 +118,7 @@ def train(config):
         if not os.path.exists(config["MODEL_SAVING"]["SAVING_FOLDER"]):
             os.makedirs(config["MODEL_SAVING"]["SAVING_FOLDER"])
 
-        torch.save(model.state_dict(), os.path.join(config["MODEL_SAVING"]["SAVING_FOLDER"], "hybrid_v1.pkl"))
+        torch.save(model.state_dict(), os.path.join(config["MODEL_SAVING"]["SAVING_FOLDER"], config["MODEL_SAVING"]["SAVING_NAME"]))
 
         scheduler.step()
 

@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
+import kornia
 
 
 class MultiPatch(nn.Module):
-    def __init__(self):
+    def __init__(self, pathes=None):
         super(MultiPatch, self).__init__()
 
         self.encoder_lv1 = Encoder()
@@ -14,6 +16,14 @@ class MultiPatch(nn.Module):
         self.decoder_lv1 = Decoder()
         self.decoder_lv2 = Decoder()
         self.decoder_lv3 = Decoder()
+
+        if pathes:
+            self.encoder_lv1.load_state_dict(torch.load(pathes["encoder_lv1"]))
+            self.encoder_lv2.load_state_dict(torch.load(pathes["encoder_lv2"]))
+            self.encoder_lv3.load_state_dict(torch.load(pathes["encoder_lv3"]))
+            self.decoder_lv1.load_state_dict(torch.load(pathes["decoder_lv1"]))
+            self.decoder_lv2.load_state_dict(torch.load(pathes["decoder_lv2"]))
+            self.decoder_lv3.load_state_dict(torch.load(pathes["decoder_lv3"]))
 
     def forward(self, x):
         H = x.size(2)
@@ -467,37 +477,54 @@ class Hybrid(nn.Module):
 
 
 class SuperHybrid(nn.Module):
-    def __init__(self, path1=None, path2=None):
+    def __init__(self, path1=None):
         super(SuperHybrid, self).__init__()
 
-        self.first = nn.DataParallel(Hybrid().cuda())
-        self.second = nn.DataParallel(DehazerColorer().cuda())
+        self.first = nn.DataParallel(DehazerColorer().cuda())
 
         if path1:
             self.first.load_state_dict(torch.load(path1))
 
-        if path2:
-            self.second.load_state_dict(torch.load(path2))
-
-        self.tail = nn.Sequential(
-            nn.BatchNorm2d(6),
+        self.colorer = nn.Sequential(
+            torchvision.models.mobilenet_v2(pretrained=True),
             nn.ReLU(inplace=True),
-            nn.Conv2d(6, 16, 3, 1, 1, bias=True),
+            nn.Linear(1000, 64),
             nn.ReLU(inplace=True),
-            nn.Conv2d(16, 64, 3, 1, 1, bias=True),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 32, 3, 1, 1, bias=True),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 9, 3, 1, 1, bias=True),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(9, 3, 3, 1, 1, bias=True)
+            nn.Linear(64, 1),
         )
+
 
     def forward(self, x):
         with torch.no_grad():
-            fst = self.first(x)
-            scd = self.second(x)
+            fst = self.first(x) + 0.5
 
-        final = self.tail(torch.cat([fst, scd], 1))
+        colors = self.colorer(x)
+        fst = fst.clamp(1/255, 1)
+        btch = colors.shape[0]
 
-        return final
+        # r, g, b, gamma = colors[:,0].reshape(btch, 1, 1), colors[:,1].reshape(btch, 1, 1), colors[:,2].reshape(btch, 1, 1), colors[:,3].reshape(btch, 1, 1, 1)
+
+        # r, g, b, gamma = torch.abs(r), torch.abs(g), torch.abs(b), torch.abs(gamma)
+
+        # y = torch.stack([fst[:,0,::] / r, fst[:,1,::] / g, fst[:,2,::] / b], 1)
+
+        # gamma = abs(colors[:,0].reshape(btch, 1, 1, 1))
+
+        # y = torch.pow(fst, 1 / gamma)
+
+        # print([float(j) for j in gamma.reshape(btch)])
+
+        # r, g, b, sat = abs(colors[:,0].reshape(btch, 1, 1)), abs(colors[:,1].reshape(btch, 1, 1)), abs(colors[:,2].reshape(btch, 1, 1)), abs(colors[:,3].reshape(btch))
+
+        # print(sum([float(j) for j in r.reshape(btch)]) / btch)
+        # print(sum([float(j) for j in g.reshape(btch)]) / btch)
+        # print(sum([float(j) for j in b.reshape(btch)]) / btch)
+        # print(sum([float(j) for j in sat.reshape(btch)]) / btch)
+
+        # y = torch.stack([torch.pow(fst[:,0,::], 1/r), torch.pow(fst[:,1,::], 1/g), torch.pow(fst[:,2,::], 1/b)], 1)
+
+        sat = abs(colors[:,0].reshape(1))
+
+        y = kornia.enhance.AdjustSaturation(sat)(fst)
+
+        return y - 0.5
