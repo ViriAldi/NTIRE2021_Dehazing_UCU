@@ -27,7 +27,7 @@ class ssimLoss(nn.Module):
             x = torch.unsqueeze(x, 0)
             y = torch.unsqueeze(y, 0)
             ans += 1 - metrics.ssim(x, y)
-        return ans
+        return ans / out_image.shape[0]
 
 
 class psnrLoss(nn.Module):
@@ -58,7 +58,7 @@ class CustomLoss_function(nn.Module):
     def forward(self, out_images, target_images):
 
         perception_loss = self.mse_loss(self.loss_network(out_images), self.loss_network(target_images))
-        recons_loss = 0.6*self.mae_loss(out_images, target_images) + 0.4*self.mse_loss(out_images, target_images)
+        recons_loss = 1*self.mae_loss(out_images, target_images) + 0*self.mse_loss(out_images, target_images)
         tv_loss = self.tv_loss(out_images)
 
         loss = recons_loss + 0.006*perception_loss + 2e-8*tv_loss

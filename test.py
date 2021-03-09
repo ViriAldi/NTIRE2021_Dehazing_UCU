@@ -8,6 +8,7 @@ from torchvision import transforms
 import torchvision
 from torch.utils.data import DataLoader
 import metrics
+import kornia
 
 
 def read_config(path):
@@ -27,7 +28,7 @@ def test(model, dataset, name):
 
     test_dataset = NH_HazeDataset(
         hazed_image_files = dataset["INPUT_FOLDER"],
-        dehazed_image_files = dataset["INPUT_FOLDER"],
+        dehazed_image_files = dataset["GT"],
         transform = transforms.Compose([
             transforms.ToTensor()
         ])
@@ -39,15 +40,30 @@ def test(model, dataset, name):
         shuffle=False
     )
 
+
     for iteration, images in enumerate(test_dataloader):
         with torch.no_grad():                                   
-            image = (images['hazed_image'] - 0.5).cuda()
-            dehazed_image = model(image)
+            image = (images['hazed_image']).cuda()
+            gt = (images['dehazed_image']).cuda()
+
+            # hue = model(image)
+            # hsv = kornia.color.rgb_to_hsv((images['dehazed_image']).cuda())
+            # hsv[:,0,:,:] = hue
+            # dehazed_image = kornia.color.hsv_to_rgb(hsv)
+
+            gt_hue, gt_sat, gt_val = torch.chunk(kornia.color.rgb_to_hsv(gt), 3, 1)
+            gt_hue = kornia.color.hsv_to_rgb(torch.cat([gt_hue, torch.ones(gt_hue.shape).cuda(), torch.ones(gt_hue.shape).cuda()], 1))
 
             if not os.path.exists(dataset["OUTPUT_FOLDER"]):
                 os.makedirs(dataset["OUTPUT_FOLDER"])
 
-            torchvision.utils.save_image(dehazed_image.data + 0.5, os.path.join(dataset["OUTPUT_FOLDER"], f"{name}_{iteration}.png"))
+            torchvision.utils.save_image(image.data, os.path.join(dataset["OUTPUT_FOLDER"], f"rs{name}_{iteration}.png"))
+            torchvision.utils.save_image(gt_hue.data, os.path.join(dataset["OUTPUT_FOLDER"], f"hue{name}_{iteration}.png"))
+            torchvision.utils.save_image(gt_sat.data, os.path.join(dataset["OUTPUT_FOLDER"], f"sat{name}_{iteration}.png"))
+            torchvision.utils.save_image(gt_val.data, os.path.join(dataset["OUTPUT_FOLDER"], f"val{name}_{iteration}.png"))
+
+
+            # torchvision.utils.save_image(dehazed_image.data, os.path.join(dataset["OUTPUT_FOLDER"], f"{name}_{iteration}.png"))
 
     print("Done")
 
@@ -75,12 +91,14 @@ def validate(model, dataset, name):
 
     for image in valid_dataloader:
         with torch.no_grad():
-            gt = (image['dehazed_image'] - 0.5).cuda()                        
-            image = (image['hazed_image'] - 0.5).cuda()
-            final_result = model(image)
+            gt = (image['dehazed_image']).cuda()                        
+            image = (image['hazed_image']).cuda()
 
-            final_result += 0.5
-            gt += 0.5
+            gt_hue, gt_sat, gt_val = torch.chunk(kornia.color.rgb_to_hsv(gt), 3, 1)
+            gt_hue = kornia.color.hsv_to_rgb(torch.cat([gt_hue, torch.ones(gt_hue.shape).cuda(), torch.ones(gt_hue.shape).cuda()], 1))
+
+            # colors = model(image)
+            # final_result = colors * torchvision.transforms.functional.rgb_to_grayscale(color, num_output_channels=3) / torchvision.transforms.functional.rgb_to_grayscale(colors, num_output_channels=3)
 
             second_psnr += metrics.psnr(final_result, gt)
             second_ssim += metrics.ssim(final_result, gt)
@@ -94,15 +112,15 @@ def validate(model, dataset, name):
 
 def test_and_validate(config, model):
 
-    for name, dataset in config["VALIDATION"].items():
-        validate(model, dataset, name)
+    # for name, dataset in config["VALIDATION"].items():
+    #     validate(model, dataset, name)
     
     for name, dataset in config["TESTING"].items():
         test(model, dataset, name)
 
 if __name__ == "__main__":
     config = read_config("config/config_test.yaml")
-    model = nn.DataParallel(models.SuperHybrid().cuda())
-    model.load_state_dict(torch.load(config["MODEL"]))
+    model = models.HueEstimator().cuda()
+    # model.load_state_dict(torch.load(config["MODEL"]))
 
     test_and_validate(config, model)

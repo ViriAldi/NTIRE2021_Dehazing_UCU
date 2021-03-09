@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 import kornia
+import math
 
 
 class MultiPatch(nn.Module):
@@ -528,3 +529,273 @@ class SuperHybrid(nn.Module):
         y = kornia.enhance.AdjustSaturation(sat)(fst)
 
         return y - 0.5
+
+
+class SatRGB(nn.Module):
+    def __init__(self):
+        super(SatRGB, self).__init__()
+
+        self.begin = nn.Sequential(
+            nn.Conv2d(6, 16, 3, 1, 1),
+            nn.ReLU(),
+            nn.Conv2d(16, 16, 3, 1, 1),
+            nn.ReLU(),
+            nn.Conv2d(16, 3, 3, 1, 1),
+            nn.ReLU()
+        )
+
+        self.mobile = torchvision.models.mobilenet_v2(pretrained=True)
+
+        self.end = nn.Sequential(
+            nn.ReLU(inplace=True),
+            nn.Linear(1000, 64),
+            nn.ReLU(inplace=True),
+            nn.Linear(64, 4),
+        )
+
+
+    def forward(self, x, original, test=False):
+
+        x = x + 0.5
+        colors = self.end(self.mobile(self.begin(torch.cat([x, original], 1))))
+        x = x.clamp(1/255, 1)
+  
+        batch = x.shape[0]
+
+        hue, con, gamma, sat = abs(colors[:,0].reshape(batch)), abs(colors[:,1].reshape(batch)), abs(colors[:,2].reshape(batch)), abs(colors[:,3].reshape(batch))
+
+        print(sum([float(j) for j in gamma]) / batch)
+        print(sum([float(j) for j in con]) / batch)
+        print(sum([float(j) for j in hue]) / batch)
+        print(sum([float(j) for j in sat]) / batch)
+
+        # x = torch.stack([torch.pow(x[:,0,::], 1/r), torch.pow(x[:,1,::], 1/g), torch.pow(x[:,2,::], 1/b)], 1)
+        if test:
+            x1 = kornia.enhance.AdjustGamma(gamma)(x)
+            x2 = kornia.enhance.AdjustContrast(con)(x1)
+            x3 = kornia.enhance.AdjustHue(hue)(x2)
+            x4 = kornia.enhance.AdjustSaturation(sat)(x3)
+
+            return x - 0.5, x1 - 0.5, x2 - 0.5, x3 - 0.5, x4 - 0.5
+
+        else:
+            x = kornia.enhance.AdjustGamma(gamma)(x)
+            x = kornia.enhance.AdjustContrast(con)(x)
+            x = kornia.enhance.AdjustHue(hue)(x)
+            x = kornia.enhance.AdjustSaturation(sat)(x)
+
+            return x - 0.5
+
+
+class IndianColor(nn.Module):
+    def __init__(self, path=None):
+        super(IndianColor, self).__init__()
+
+        self.indian = MultiPatch()
+
+        if path:
+            self.indian.load_state_dict(torch.load(path))
+
+        self.rgbsat = SatRGB()
+
+
+    def forward(self, x, test=False):
+        
+        dehazed = self.indian(x)
+        enhanced = self.rgbsat(dehazed, x, test)
+
+        return enhanced
+
+
+class GrayScale(nn.Module):
+    def __init__(self, path=None):
+        super(GrayScale, self).__init__()
+
+        self.indian = MultiPatch()
+
+    def forward(self, x):
+        
+        dehazed = self.indian(x)
+
+        return dehazed
+
+
+class ColorEstimator(nn.Module):
+    def __init__(self, path=None):
+        super(ColorEstimator, self).__init__()
+
+        self.gray_dehazer = GrayScale().cuda()
+
+        if path:
+            self.gray_dehazer.load_state_dict(torch.load(path))
+
+        self.colorer = MultiPatch()
+        self.colorer.encoder_lv1.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+        self.colorer.encoder_lv2.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+        self.colorer.encoder_lv3.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+
+        self.colorer.decoder_lv1.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+        self.colorer.decoder_lv2.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+        self.colorer.decoder_lv3.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+
+        self.final = nn.Conv2d(6, 3, kernel_size=3, padding=1)
+
+    def forward(self, x):
+        
+        with torch.no_grad():
+            dehazed = self.gray_dehazer(x)
+
+        color = self.final(self.colorer(torch.cat([dehazed, x], 1)))
+
+        # dehazed_image = color * dehazed / torchvision.transforms.functional.rgb_to_grayscale(color, num_output_channels=3)
+
+        return color, dehazed
+
+
+class HueEstimator(nn.Module):
+    def __init__(self, path=None):
+        super(HueEstimator, self).__init__()
+
+        self.gray_dehazer = GrayScale().cuda()
+
+        self.recognizer = MultiPatch()
+
+        self.recognizer.encoder_lv1.layer1 = nn.Conv2d(4, 32, kernel_size=3, padding=1)
+        self.recognizer.encoder_lv2.layer1 = nn.Conv2d(4, 32, kernel_size=3, padding=1)
+        self.recognizer.encoder_lv3.layer1 = nn.Conv2d(4, 32, kernel_size=3, padding=1)
+
+        self.recognizer.decoder_lv1.layer24 = nn.Conv2d(32, 4, kernel_size=3, padding=1)
+        self.recognizer.decoder_lv2.layer24 = nn.Conv2d(32, 4, kernel_size=3, padding=1)
+        self.recognizer.decoder_lv3.layer24 = nn.Conv2d(32, 4, kernel_size=3, padding=1)
+
+        if path:
+            self.gray_dehazer.load_state_dict(torch.load(path))
+
+        self.final = nn.Conv2d(4, 1, kernel_size=3, padding=1)
+
+    def forward(self, x):
+        
+        with torch.no_grad():
+            dehazed = self.gray_dehazer(x)
+
+        hue = self.final(self.recognizer(torch.cat([dehazed[:,0,::].unsqueeze(1), x], 1)))
+
+        return hue
+
+
+class MonsterBlock(nn.Module):
+    def __init__(self):
+        super(MonsterBlock, self).__init__()
+
+        # self.worker = MultiPatch()
+        self.worker = nn.Sequential(
+            Encoder(),
+            Decoder()
+        )
+
+        self.final = nn.Sequential(
+            nn.ReLU(),
+            nn.Conv2d(6, 1, kernel_size=3, padding=1)
+        )
+
+    def forward(self, x):
+        
+        x = self.worker(x)
+        x = self.final(x)
+
+        return x
+
+
+class Monster(nn.Module):
+    def __init__(self):
+        super(Monster, self).__init__()
+
+        self.hue = nn.Sequential(
+            MultiPatch(),
+            nn.ReLU(),
+            nn.Conv2d(3, 2, kernel_size=3, padding=1)
+        )
+        self.saturation = nn.Sequential(
+            MultiPatch(),
+            nn.ReLU(),
+            nn.Conv2d(3, 1, kernel_size=3, padding=1)
+        )
+        self.value = nn.Sequential(
+            MultiPatch(),
+            nn.ReLU(),
+            nn.Conv2d(3, 1, kernel_size=3, padding=1)
+        )
+
+    def forward(self, x):
+
+        hue = self.hue(x)
+        saturation = self.saturation(x)
+        value = self.value(x)
+
+        hue = hue / (hue[:,0,:,:].unsqueeze(1)**2 + hue[:,1,:,:].unsqueeze(1)**2)**0.5
+
+        return hue, saturation, value
+
+    @staticmethod
+    def xy2hue(tns):
+        x, y = torch.chunk(tns, 2, 1)
+
+        mask1 = torch.logical_and(x > 0, y >= 0) * 0
+        mask2 = torch.logical_and(x < 0, y >= 0) * math.pi
+        mask3 = torch.logical_and(x < 0, y < 0) * math.pi
+        mask4 = torch.logical_and(x > 0, y < 0) * 2 * math.pi
+
+        result = torch.arctan(y / x) + mask1 + mask2 + mask3 + mask4
+
+        return result
+
+    @staticmethod
+    def hue2xy(angle):
+        return torch.cat([torch.cos(angle), torch.sin(angle)], 1)
+
+
+class HueTrainer(nn.Module):
+    def __init__(self, path1, path2):
+        super(HueTrainer, self).__init__()
+
+        self.hue = MultiPatch()
+
+        self.hue.encoder_lv1.layer1 = nn.Conv2d(9, 32, kernel_size=3, padding=1)
+        self.hue.encoder_lv2.layer1 = nn.Conv2d(9, 32, kernel_size=3, padding=1)
+        self.hue.encoder_lv3.layer1 = nn.Conv2d(9, 32, kernel_size=3, padding=1)
+
+        self.hue.decoder_lv1.layer24 = nn.Conv2d(32, 9, kernel_size=3, padding=1)
+        self.hue.decoder_lv2.layer24 = nn.Conv2d(32, 9, kernel_size=3, padding=1)
+        self.hue.decoder_lv3.layer24 = nn.Conv2d(32, 9, kernel_size=3, padding=1)
+
+        self.saturation = nn.Sequential(
+            MultiPatch(),
+            nn.ReLU(),
+            nn.Conv2d(3, 1, kernel_size=3, padding=1)
+        )
+        self.value = nn.Sequential(
+            MultiPatch(),
+            nn.ReLU(),
+            nn.Conv2d(3, 1, kernel_size=3, padding=1)
+        )
+
+        self.saturation.load_state_dict(torch.load(path1))
+        self.value.load_state_dict(torch.load(path2))
+
+        self.tail = nn.Conv2d(9, 3, kernel_size=3, padding=1)
+
+    def forward(self, x):
+
+        with torch.no_grad():
+            val = self.value(x)
+            sat = self.saturation(x)
+
+        result = self.tail(self.hue(torch.cat([x, val, val, val, sat, sat, sat], 1)))
+
+        return result
+
+
+# model = Monster().cuda()
+# model.load_state_dict(torch.load("models/MONSTER_v2.pkl"))
+# torch.save(model.value.state_dict(), "models/monster_value_v0.pkl")
+# torch.save(model.saturation.state_dict(), "models/monster_saturation_v0.pkl")
