@@ -1,4 +1,4 @@
-EXP_PATH: &PATH experiments/exp_dense
+EXP_PATH: &PATH experiments/exp_smp
 
 PRETRAINED:
   USE_PRETRAINED: False
@@ -15,7 +15,7 @@ TRAINSETS:
       CROPED_DATA_FREE: !join [*PATH, NTIRE2021-HAZE/GT]
       CROPED_DATA_HAZY: !join [*PATH, NTIRE2021-HAZE/hazy]
       CROP_TIMES: 10
-      BATCH_SIZE : 48
+      BATCH_SIZE : 1
       NUM_WORKERS: 10
 
     # DATASET2:
@@ -63,7 +63,7 @@ TRAINING:
   LEARNING_RATE: 0.0001
   EPOCHS: 3000
   START_EPOCH: 1
-  LOGGING_FREQ: 25
+  LOGGING_FREQ: 10
 
 
 TESTING:
@@ -72,7 +72,7 @@ TESTING:
   # EPOCH_FREQ: 1
   DATA_HAZY: data/valid_set
   DEHAZED_PATH: !join [*PATH, dehazed]
-  EPOCH_FREQ: 3
+  EPOCH_FREQ: 1
 
 
 VALIDATION:
@@ -97,4 +97,4 @@ VALIDATION:
 
 MODEL_SAVING:
   SAVING_FOLDER: !join [*PATH, models]
-  SAVING_NAME: MONSTER_v1.pkl
+  SAVING_NAME: MultiPatchSMP.pkl

@@ -44,7 +44,7 @@ def train(config):
     LEARNING_RATE=config["TRAINING"]["LEARNING_RATE"]
     EPOCHS=config["TRAINING"]["EPOCHS"]
 
-    model = models.HueTrainer("models/monster_saturation_v0.pkl", "models/monster_value_v0.pkl").cuda()
+    model = models.MultiPatchSMP().cuda()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = StepLR(optimizer, step_size=25, gamma=0.6)
@@ -89,15 +89,16 @@ def train(config):
         for iteration, images in enumerate(train_dataloader):
 
             # custom_loss_fn = CustomLoss_function().cuda(GPU)
-            # custom_loss_fn1 = nn.MSELoss().cuda(GPU)
+            # custom_loss_fn = nn.MSELoss().cuda(GPU)
             custom_loss_fn = ssimLoss().cuda(GPU)
+            # custom_loss_fn = nn.L1Loss().cuda(GPU)
 
             # loss_hue = nn.L1Loss().cuda(GPU)
             # loss_sat = nn.L1Loss().cuda(GPU)
             # loss_value = CustomLoss_function().cuda(GPU)
             # loss_general = CustomLoss_function().cuda(GPU)
 
-            gt = Variable(images['dehazed_image']).cuda(GPU) 
+            gt = Variable(images['dehazed_image']).cuda(GPU)
             images_lv1 = Variable(images['hazed_image']).cuda(GPU)
 
             # hue, sat, val = model(images_lv1)
@@ -111,7 +112,10 @@ def train(config):
             # loss = loss_hue(hue, gt_hue) * 0.4 + 0.25 * loss_sat(sat, gt_sat) + 0.25 * loss_value(torch.cat([val, val, val], 1), torch.cat([gt_val, gt_val, gt_val], 1)) + 0.5 * loss_general(result, gt)
             # loss = loss_general(result, gt)
             # loss = CustomLoss_function().cuda()(model(images_lv1), gt)
-            loss = custom_loss_fn(gt, model(images_lv1))
+            val = kornia.color.rgb_to_hsv(gt)[:,2,:,:].unsqueeze(1)
+
+            # loss = custom_loss_fn(torch.cat([sat, sat, sat], 1), model(images_lv1))
+            loss = custom_loss_fn(val, model(images_lv1))
             ls += loss
 
             # with torch.no_grad():
@@ -188,6 +192,12 @@ def test(config, model, epoch=-1):
             # result = kornia.color.hsv_to_rgb(torch.cat([hue, sat, val], 1))
 
             # hue = kornia.color.hsv_to_rgb(torch.cat([hue, torch.ones(hue.shape).cuda(), torch.ones(hue.shape).cuda()], 1))
+            # result = torch.zeros(images.shape).cuda()
+            # l, r = images.shape[2] // 10, images.shape[3] // 10
+
+            # for i in range(10):
+            #     for j in range(10):
+            #         result[:,:, l * i:l * (i + 1), r * j:r * (j+1)] = model(images[:,:, l * i:l * (i + 1), r * j:r * (j+1)])
             result = model(images)
 
             if not os.path.exists(os.path.join(config["TESTING"]["DEHAZED_PATH"], f"epoch{epoch}")):
@@ -229,12 +239,14 @@ def validate(config, model, writer, epoch=-1):
                 gt = Variable(images['dehazed_image'] - 0.5).cuda(config["TRAINING"]["GPU"])
                 images_lv1 = Variable(images['hazed_image'] - 0.5).cuda(config["TRAINING"]["GPU"])
 
-                final_result = torch.zeros(images_lv1.shape).cuda()
-                l, r = images_lv1.shape[2] // 10, images_lv1.shape[3] // 10
+                # final_result = torch.zeros(images_lv1.shape).cuda()
+                # l, r = images_lv1.shape[2] // 10, images_lv1.shape[3] // 10
 
-                for i in range(10):
-                    for j in range(10):
-                        final_result[:,:, l * i:l * (i + 1), r * j:r * (j+1)] = model(images_lv1[:,:, l * i:l * (i + 1), r * j:r * (j+1)])
+                # for i in range(10):
+                #     for j in range(10):
+                #         final_result[:,:, l * i:l * (i + 1), r * j:r * (j+1)] = model(images_lv1[:,:, l * i:l * (i + 1), r * j:r * (j+1)])
+
+                final_result = model(images_lv1)
 
                 first_psnr += metrics.psnr(final_result, gt)
                 first_ssim += metrics.ssim(final_result, gt)

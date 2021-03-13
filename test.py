@@ -28,7 +28,7 @@ def test(model, dataset, name):
 
     test_dataset = NH_HazeDataset(
         hazed_image_files = dataset["INPUT_FOLDER"],
-        dehazed_image_files = dataset["GT"],
+        dehazed_image_files = dataset["INPUT_FOLDER"],
         transform = transforms.Compose([
             transforms.ToTensor()
         ])
@@ -46,21 +46,25 @@ def test(model, dataset, name):
             image = (images['hazed_image']).cuda()
             gt = (images['dehazed_image']).cuda()
 
-            # hue = model(image)
-            # hsv = kornia.color.rgb_to_hsv((images['dehazed_image']).cuda())
-            # hsv[:,0,:,:] = hue
-            # dehazed_image = kornia.color.hsv_to_rgb(hsv)
+            final_result = torch.zeros(image.shape).cuda()
+            x, y = image.shape[2] // 10, image.shape[3] // 10
 
-            gt_hue, gt_sat, gt_val = torch.chunk(kornia.color.rgb_to_hsv(gt), 3, 1)
-            gt_hue = kornia.color.hsv_to_rgb(torch.cat([gt_hue, torch.ones(gt_hue.shape).cuda(), torch.ones(gt_hue.shape).cuda()], 1))
+            # final_result = model(image)
+
+            # colors = model(image)
+            # final_result = colors * torchvision.transforms.functional.rgb_to_grayscale(color, num_output_channels=3) / torchvision.transforms.functional.rgb_to_grayscale(colors, num_output_channels=3)
+
+            for i in range(10):
+                for j in range(10):
+                    final_result[:,:,i*x: i*x + x, y*j: y*j + y] = model(image[:,:,i*x: i*x + x, y*j: y*j + y])
 
             if not os.path.exists(dataset["OUTPUT_FOLDER"]):
                 os.makedirs(dataset["OUTPUT_FOLDER"])
 
-            torchvision.utils.save_image(image.data, os.path.join(dataset["OUTPUT_FOLDER"], f"rs{name}_{iteration}.png"))
-            torchvision.utils.save_image(gt_hue.data, os.path.join(dataset["OUTPUT_FOLDER"], f"hue{name}_{iteration}.png"))
-            torchvision.utils.save_image(gt_sat.data, os.path.join(dataset["OUTPUT_FOLDER"], f"sat{name}_{iteration}.png"))
-            torchvision.utils.save_image(gt_val.data, os.path.join(dataset["OUTPUT_FOLDER"], f"val{name}_{iteration}.png"))
+            torchvision.utils.save_image(final_result.data, os.path.join(dataset["OUTPUT_FOLDER"], f"rs{name}_{iteration}.png"))
+            # torchvision.utils.save_image(gt_hue.data, os.path.join(dataset["OUTPUT_FOLDER"], f"hue{name}_{iteration}.png"))
+            # torchvision.utils.save_image(gt_sat.data, os.path.join(dataset["OUTPUT_FOLDER"], f"sat{name}_{iteration}.png"))
+            # torchvision.utils.save_image(gt_val.data, os.path.join(dataset["OUTPUT_FOLDER"], f"val{name}_{iteration}.png"))
 
 
             # torchvision.utils.save_image(dehazed_image.data, os.path.join(dataset["OUTPUT_FOLDER"], f"{name}_{iteration}.png"))
@@ -94,11 +98,16 @@ def validate(model, dataset, name):
             gt = (image['dehazed_image']).cuda()                        
             image = (image['hazed_image']).cuda()
 
-            gt_hue, gt_sat, gt_val = torch.chunk(kornia.color.rgb_to_hsv(gt), 3, 1)
-            gt_hue = kornia.color.hsv_to_rgb(torch.cat([gt_hue, torch.ones(gt_hue.shape).cuda(), torch.ones(gt_hue.shape).cuda()], 1))
+            final_result = torch.zeros(image.shape).cuda()
+            x, y = image.shape[2:]
 
             # colors = model(image)
             # final_result = colors * torchvision.transforms.functional.rgb_to_grayscale(color, num_output_channels=3) / torchvision.transforms.functional.rgb_to_grayscale(colors, num_output_channels=3)
+
+            for i in range(10):
+                for j in range(10):
+                    final_result[:,:,i*x: i*x + i, y*j: y*j + y] = model(image[:,:,i*x: i*x + i, y*j: y*j + y])
+
 
             second_psnr += metrics.psnr(final_result, gt)
             second_ssim += metrics.ssim(final_result, gt)
@@ -120,7 +129,7 @@ def test_and_validate(config, model):
 
 if __name__ == "__main__":
     config = read_config("config/config_test.yaml")
-    model = models.HueEstimator().cuda()
-    # model.load_state_dict(torch.load(config["MODEL"]))
+    model = models.MultiPatchSMP().cuda()
+    model.load_state_dict(torch.load(config["MODEL"]))
 
     test_and_validate(config, model)

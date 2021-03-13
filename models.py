@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torchvision
 import kornia
 import math
+import segmentation_models_pytorch as smp
 
 
 class MultiPatch(nn.Module):
@@ -779,8 +780,8 @@ class HueTrainer(nn.Module):
             nn.Conv2d(3, 1, kernel_size=3, padding=1)
         )
 
-        self.saturation.load_state_dict(torch.load(path1))
-        self.value.load_state_dict(torch.load(path2))
+        # self.saturation.load_state_dict(torch.load(path1))
+        # self.value.load_state_dict(torch.load(path2))
 
         self.tail = nn.Conv2d(9, 3, kernel_size=3, padding=1)
 
@@ -795,7 +796,112 @@ class HueTrainer(nn.Module):
         return result
 
 
-# model = Monster().cuda()
-# model.load_state_dict(torch.load("models/MONSTER_v2.pkl"))
-# torch.save(model.value.state_dict(), "models/monster_value_v0.pkl")
-# torch.save(model.saturation.state_dict(), "models/monster_saturation_v0.pkl")
+class Titan(nn.Module):
+    def __init__(self, path):
+        super(Titan, self).__init__()
+
+        self.first = HueTrainer(1, 1)
+        self.first.load_state_dict(torch.load(path))
+
+        self.second = MultiPatch()
+
+        self.second.encoder_lv1.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+        self.second.encoder_lv2.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+        self.second.encoder_lv3.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+
+        self.second.decoder_lv1.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+        self.second.decoder_lv2.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+        self.second.decoder_lv3.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+
+        self.tail = nn.Conv2d(6, 3, kernel_size=3, padding=1)
+
+    def forward(self, x):
+
+        with torch.no_grad():
+            val = self.first(x)
+
+        result = self.tail(self.second(torch.cat([x, val], 1)))
+
+        return result
+
+
+class MultiPatchSMP(nn.Module):
+    def __init__(self):
+        super(MultiPatchSMP, self).__init__()
+
+        stage_idxs = smp.encoders.dpn.dpn_encoders["dpn92"]["params"]["stage_idxs"]
+        out_channels = smp.encoders.dpn.dpn_encoders["dpn92"]["params"]["out_channels"]
+        params = smp.encoders.dpn.dpn_encoders["dpn92"]["params"]
+        pretrained = smp.encoders.dpn.dpn_encoders["dpn92"]["pretrained_settings"]
+
+        self.encoder_lv1 = smp.encoders.dpn.DPNEncorder(**params)
+        self.encoder_lv2 = smp.encoders.dpn.DPNEncorder(**params)
+        self.encoder_lv3 = smp.encoders.dpn.DPNEncorder(**params)
+
+        # self.encoder_lv1.load_state_dict(torch.utils.model_zoo.load_url(pretrained['imagenet']["url"]))
+        # self.encoder_lv2.load_state_dict(torch.utils.model_zoo.load_url(pretrained['imagenet']["url"]))
+        # self.encoder_lv3.load_state_dict(torch.utils.model_zoo.load_url(pretrained['imagenet']["url"]))
+
+        self.decoder_lv1 = smp.unetplusplus.decoder.UnetPlusPlusDecoder(out_channels, out_channels[:-1][::-1], n_blocks=len(out_channels)-1)
+        self.decoder_lv2 = smp.unetplusplus.decoder.UnetPlusPlusDecoder(out_channels, out_channels[:-1][::-1], n_blocks=len(out_channels)-1)
+        self.decoder_lv3 = smp.unetplusplus.decoder.UnetPlusPlusDecoder(out_channels, out_channels[:-1][::-1], n_blocks=len(out_channels)-1)
+
+        self.tail = nn.Conv2d(3, 1, 3, 1, 1)
+
+        # self.decoder_lv1 = smp.unet.decoder.UnetDecoder(out_channels, out_channels[:-1][::-1], n_blocks=len(out_channels)-1)
+        # self.decoder_lv2 = smp.unet.decoder.UnetDecoder(out_channels, out_channels[:-1][::-1], n_blocks=len(out_channels)-1)
+        # self.decoder_lv3 = smp.unet.decoder.UnetDecoder(out_channels, out_channels[:-1][::-1], n_blocks=len(out_channels)-1)
+
+    
+    def forward(self, x):
+        b,c,h,w=x.shape
+        mod1=h%64
+        mod2=w%64
+        if(mod1):
+            down1=64-mod1
+            x=F.pad(x,(0,0,0,down1),"reflect")
+        if(mod2):
+            down2=64-mod2
+            x=F.pad(x,(0,down2,0,0),"reflect")
+
+        H = x.size(2)
+        W = x.size(3)
+
+        images_lv2_1 = x[:,:,0:int(H/2),:]
+        images_lv2_2 = x[:,:,int(H/2):H,:]
+        images_lv3_1 = images_lv2_1[:,:,:,0:int(W/2)]
+        images_lv3_2 = images_lv2_1[:,:,:,int(W/2):W]
+        images_lv3_3 = images_lv2_2[:,:,:,0:int(W/2)]
+        images_lv3_4 = images_lv2_2[:,:,:,int(W/2):W]
+
+        feature_lv3_1 = self.encoder_lv3(images_lv3_1)
+        feature_lv3_2 = self.encoder_lv3(images_lv3_2)
+        feature_lv3_3 = self.encoder_lv3(images_lv3_3)
+        feature_lv3_4 = self.encoder_lv3(images_lv3_4)
+
+        # print([x.shape for x in feature_lv3_1])
+
+        feature_lv3_top = [torch.cat((feature_lv3_1[i], feature_lv3_2[i]), 3) for i in range(len(feature_lv3_1))]
+        feature_lv3_bot = [torch.cat((feature_lv3_3[i], feature_lv3_4[i]), 3) for i in range(len(feature_lv3_1))]
+        feature_lv3 = [torch.cat((feature_lv3_top[i], feature_lv3_bot[i]), 2) for i in range(len(feature_lv3_1))]
+
+        residual_lv3_top = self.decoder_lv3(*feature_lv3_top)
+        residual_lv3_bot = self.decoder_lv3(*feature_lv3_bot)
+
+        feature_lv2_1 = self.encoder_lv2(images_lv2_1 + residual_lv3_top)
+        feature_lv2_2 = self.encoder_lv2(images_lv2_2 + residual_lv3_bot)
+
+
+        feature_lv2 = [torch.cat((feature_lv2_1[i], feature_lv2_2[i]), 2) + feature_lv3[i] for i in range(len(feature_lv2_1))]
+        residual_lv2 = self.decoder_lv2(*feature_lv2)
+
+        feature_lv1 = self.encoder_lv1(x + residual_lv2)
+        feature_lv1 = [feature_lv1[i] + feature_lv2[i] for i in range(len(feature_lv1))]
+        dehazed_image = self.decoder_lv1(*feature_lv1)
+
+        dehazed_image = self.tail(dehazed_image)
+
+        if(mod1):dehazed_image=dehazed_image[:,:,:-down1,:]
+        if(mod2):dehazed_image=dehazed_image[:,:,:,:-down2]
+
+        return dehazed_image
