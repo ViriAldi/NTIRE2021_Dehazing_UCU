@@ -1,100 +1,108 @@
-EXP_PATH: &PATH experiments/exp_smp
+EXP_PATH: &PATH exp/train
 
-PRETRAINED:
-  USE_PRETRAINED: False
-  PRETRAINED_MODEL: models/MONSTER_v1.pkl
+MODEL:
 
+	ARCHITECTURE: ColorSegmentator
+	LOSS:
+		ARCH: LaplacianLoss
+		PARAMS:
 
-TRAINSETS:
-  
-  DATASETS:
-    DATASET1:
-      ALREADY_CROPED: True
-      ORIG_DATA_FREE: data/NTIRE2021-HAZE/GT
-      ORIG_DATA_HAZY: data/NTIRE2021-HAZE/hazy
-      CROPED_DATA_FREE: !join [*PATH, NTIRE2021-HAZE/GT]
-      CROPED_DATA_HAZY: !join [*PATH, NTIRE2021-HAZE/hazy]
-      CROP_TIMES: 10
-      BATCH_SIZE : 1
-      NUM_WORKERS: 10
+	USE_PRETRAINED: False
+	PRETRAINED_MODEL:
 
-    # DATASET2:
-    #   ALREADY_CROPED: True
-    #   ORIG_DATA_FREE: data/DENSE-HAZE/GT
-    #   ORIG_DATA_HAZY: data/DENSE-HAZE/hazy
-    #   CROPED_DATA_FREE: !join [*PATH, DENSE-HAZE/GT]
-    #   CROPED_DATA_HAZY: !join [*PATH, DENSE-HAZE/hazy]
-    #   CROP_TIMES: 10
-    #   BATCH_SIZE : 28
-    #   NUM_WORKERS: 10
-    
-    # DATASET3:
-    #   ALREADY_CROPED: True
-    #   ORIG_DATA_FREE: data/I-HAZE-RESCALED/GT
-    #   ORIG_DATA_HAZY: data/I-HAZE-RESCALED/hazy
-    #   CROPED_DATA_FREE: !join [*PATH, I-HAZE/GT]
-    #   CROPED_DATA_HAZY: !join [*PATH, I-HAZE/hazy]
-    #   CROP_TIMES: 10
-    #   BATCH_SIZE : 2
-    #   NUM_WORKERS: 10
-
-    # DATASET4:
-    #   ALREADY_CROPED: True
-    #   ORIG_DATA_FREE: data/O-HAZE-RESCALED/GT
-    #   ORIG_DATA_HAZY: data/O-HAZE-RESCALED/hazy
-    #   CROPED_DATA_FREE: !join [*PATH, O-HAZE/GT]
-    #   CROPED_DATA_HAZY: !join [*PATH, O-HAZE/hazy]
-    #   CROP_TIMES: 10
-    #   BATCH_SIZE : 40
-    #   NUM_WORKERS: 10
-
-    # DATASET5:
-    #   ALREADY_CROPED: True
-    #   ORIG_DATA_FREE: data/NH-HAZE/GT
-    #   ORIG_DATA_HAZY: data/NH-HAZE/hazy
-    #   CROPED_DATA_FREE: !join [*PATH, NH-HAZE/GT]
-    #   CROPED_DATA_HAZY: !join [*PATH, NH-HAZE/hazy]
-    #   CROP_TIMES: 10
-    #   BATCH_SIZE : 28
-    #   NUM_WORKERS: 10
+	SAVING_FOLDER: !join [*PATH, checkpoints]
+	NAME: pussy
 
 TRAINING:
-  GPU: 0
-  LEARNING_RATE: 0.0001
-  EPOCHS: 3000
-  START_EPOCH: 1
-  LOGGING_FREQ: 10
 
+	LOGGING_FREQ: 25
+	TEST_FREQ: 1
+	VALID_FREQ: 1
 
-TESTING:
-  # DATA_HAZY: data/valid_set
-  # DEHAZED_PATH: !join [*PATH, dehazed]
-  # EPOCH_FREQ: 1
-  DATA_HAZY: data/valid_set
-  DEHAZED_PATH: !join [*PATH, dehazed]
-  EPOCH_FREQ: 1
+	USE_PARALLEL: True
+	USE_TENSORBOARD: True
+	USE_SCHEDULER: True
 
+	SCHEDULER:
+		STEP: 25
+		GAMMA: 0.5
 
-VALIDATION:
-  EPOCH_FREQ: 1000
-  DATASETS:
-    NTIRE2020:
-      DATA_FREE: data/NH-HAZE/GT
-      DATA_HAZY: data/NH-HAZE/hazy
-    NTIRE2021:
-      DATA_FREE: data/NTIRE2021-HAZE/GT
-      DATA_HAZY: data/NTIRE2021-HAZE/hazy
-    DENSE-HAZE:
-      DATA_FREE: data/DENSE-HAZE/GT
-      DATA_HAZY: data/DENSE-HAZE/hazy
-    # O-HAZE:
-    #   DATA_FREE: data/O-HAZE-RESCALED/GT
-    #   DATA_HAZY: data/O-HAZE-RESCALED/hazy
-    # I-HAZE:
-    #   DATA_FREE: data/I-HAZE-RESCALED/GT
-    #   DATA_HAZY: data/I-HAZE-RESCALED/hazy
+	LEARNING_RATE: 0.0001
+	EPOCHS: 3000
 
+TRAINING_DATA:
 
-MODEL_SAVING:
-  SAVING_FOLDER: !join [*PATH, models]
-  SAVING_NAME: MultiPatchSMP.pkl
+	BATCH_SIZE: 32
+	NUM_WORKERS: 10
+	SHUFFLE: True
+
+	DATASETS:
+		NTIRE2021:
+			HAZY:
+				DATA_FREE: prepared/NTIRE2021_5X5_HAZE/GT
+				DATA_HAZY: prepared/NTIRE2021_5X5_HAZE/hazy
+			MAX:
+				DATA_FREE: prepared/NTIRE2021_5X5_MAX/
+				DATA_HAZY: prepared/NTIRE2021_5X5_MAX/
+			MID:
+				DATA_FREE: prepared/NTIRE2021_5X5_MID/
+				DATA_HAZY: prepared/NTIRE2021_5X5_MID/
+			MIN:
+				DATA_FREE: prepared/NTIRE2021_5X5_MIN/
+				DATA_HAZY: prepared/NTIRE2021_5X5_MIN/
+		# NTIRE2020:
+			# HAZY:
+				# DATA_FREE:
+				# DATA_HAZY:
+		# DENSE:
+			# HAZY:
+				# DATA_FREE:
+				# DATA_HAZY:
+		# IHAZE:
+			# HAZY:
+				# DATA_FREE:
+				# DATA_HAZY:
+		# OHAZE:
+			# HAZY:
+				# DATA_FREE:
+				# DATA_HAZY:
+
+TESTING_DATA:
+
+	BATCH_SIZE: 1
+	NUM_WORKERS: 10
+	SHUFFLE: False
+
+	DATASETS:
+		VALID_2021:
+			HAZY:
+				DATA_FREE: data/valid_set
+				DATA_HAZY: data/valid_set
+
+VALIDATION_DATA:
+
+	BATCH_SIZE: 1
+	NUM_WORKERS: 10
+	SHUFFLE: False
+
+	DATASETS:
+		NTIRE2020:
+			HAZY:
+				DATA_FREE: data/NH-HAZE/GT
+				DATA_HAZY: data/NH-HAZE/hazy
+		NTIRE2021:
+			HAZY:
+				DATA_FREE: data/NTIRE2021-HAZE/GT
+				DATA_HAZY: data/NTIRE2021-HAZE/hazy
+		DENSE-HAZE:
+			HAZY:
+				DATA_FREE: data/DENSE-HAZE/GT
+				DATA_HAZY: data/DENSE-HAZE/hazy
+		O-HAZE:
+			HAZY:
+				DATA_FREE: data/O-HAZE-RESCALED/GT
+				DATA_HAZY: data/O-HAZE-RESCALED/hazy
+		I-HAZE:
+			HAZY:
+				DATA_FREE: data/I-HAZE-RESCALED/GT
+				DATA_HAZY: data/I-HAZE-RESCALED/hazy

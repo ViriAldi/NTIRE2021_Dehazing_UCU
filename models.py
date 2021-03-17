@@ -826,27 +826,28 @@ class Titan(nn.Module):
 
 
 class MultiPatchSMP(nn.Module):
-    def __init__(self):
+    def __init__(self, inp=3):
         super(MultiPatchSMP, self).__init__()
 
-        stage_idxs = smp.encoders.dpn.dpn_encoders["dpn92"]["params"]["stage_idxs"]
         out_channels = smp.encoders.dpn.dpn_encoders["dpn92"]["params"]["out_channels"]
+        out_channels = [inp] + list(out_channels[1:])
         params = smp.encoders.dpn.dpn_encoders["dpn92"]["params"]
-        pretrained = smp.encoders.dpn.dpn_encoders["dpn92"]["pretrained_settings"]
+        params["inp"] = inp
+        # pretrained = smp.encoders.dpn.dpn_encoders["dpn92"]["pretrained_settings"]
 
-        self.encoder_lv1 = smp.encoders.dpn.DPNEncorder(**params)
-        self.encoder_lv2 = smp.encoders.dpn.DPNEncorder(**params)
-        self.encoder_lv3 = smp.encoders.dpn.DPNEncorder(**params)
+        self.encoder_lv1 = smp.encoders.dpn.DPNEncoder(**params)
+        self.encoder_lv2 = smp.encoders.dpn.DPNEncoder(**params)
+        self.encoder_lv3 = smp.encoders.dpn.DPNEncoder(**params)
 
-        # self.encoder_lv1.load_state_dict(torch.utils.model_zoo.load_url(pretrained['imagenet']["url"]))
-        # self.encoder_lv2.load_state_dict(torch.utils.model_zoo.load_url(pretrained['imagenet']["url"]))
-        # self.encoder_lv3.load_state_dict(torch.utils.model_zoo.load_url(pretrained['imagenet']["url"]))
+        # self.encoder_lv1.load_state_dict(torch.utils.model_zoo.load_url(pretrained['imagenet+5k']["url"]))
+        # self.encoder_lv2.load_state_dict(torch.utils.model_zoo.load_url(pretrained['imagenet+5k']["url"]))
+        # self.encoder_lv3.load_state_dict(torch.utils.model_zoo.load_url(pretrained['imagenet+5k']["url"]))
 
         self.decoder_lv1 = smp.unetplusplus.decoder.UnetPlusPlusDecoder(out_channels, out_channels[:-1][::-1], n_blocks=len(out_channels)-1)
         self.decoder_lv2 = smp.unetplusplus.decoder.UnetPlusPlusDecoder(out_channels, out_channels[:-1][::-1], n_blocks=len(out_channels)-1)
         self.decoder_lv3 = smp.unetplusplus.decoder.UnetPlusPlusDecoder(out_channels, out_channels[:-1][::-1], n_blocks=len(out_channels)-1)
 
-        self.tail = nn.Conv2d(3, 1, 3, 1, 1)
+        self.tail = nn.Conv2d(inp, 3, 3, 1, 1)
 
         # self.decoder_lv1 = smp.unet.decoder.UnetDecoder(out_channels, out_channels[:-1][::-1], n_blocks=len(out_channels)-1)
         # self.decoder_lv2 = smp.unet.decoder.UnetDecoder(out_channels, out_channels[:-1][::-1], n_blocks=len(out_channels)-1)
@@ -905,3 +906,82 @@ class MultiPatchSMP(nn.Module):
         if(mod2):dehazed_image=dehazed_image[:,:,:,:-down2]
 
         return dehazed_image
+
+
+class SuperSat(nn.Module):
+    def __init__(self, path=None):
+        super(SuperSat, self).__init__()
+
+        self.val_estimator = MultiPatchSMP()
+        self.sat_estimator = MultiPatch()
+
+        self.sat_estimator.encoder_lv1.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+        self.sat_estimator.encoder_lv2.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+        self.sat_estimator.encoder_lv3.layer1 = nn.Conv2d(6, 32, kernel_size=3, padding=1)
+
+        self.sat_estimator.decoder_lv1.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+        self.sat_estimator.decoder_lv2.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+        self.sat_estimator.decoder_lv3.layer24 = nn.Conv2d(32, 6, kernel_size=3, padding=1)
+
+        if path:
+            self.val_estimator.load_state_dict(torch.load(path))
+
+        self.tail = nn.Conv2d(6, 1, kernel_size=3, padding=1)
+
+    def forward(self, x):
+
+        with torch.no_grad():
+            val = self.val_estimator(x)
+
+        result = self.tail(self.sat_estimator(torch.cat([x[:,0,:,:].unsqueeze(1), val, x[:,1,:,:].unsqueeze(1), val, x[:,2,:,:].unsqueeze(1), val], 1)))
+
+        return result, val
+
+
+class SuperHue(nn.Module):
+    def __init__(self):
+        super(SuperHue, self).__init__()
+
+        self.hue_estimator = MultiPatchSMP(6)
+
+    def forward(self, x):
+
+        result = self.hue_estimator(x)
+
+        return result
+
+
+class ColorSegmentator(nn.Module):
+    def __init__(self):
+        super(ColorSegmentator, self).__init__()
+
+        self.segmentator = smp.unetplusplus.UnetPlusPlus(in_channels=6, classes=3, decoder_attention_type="scse", activation="softmax")
+
+    def forward(self, x):
+        b,c,h,w=x.shape
+        mod1=h%64
+        mod2=w%64
+        if(mod1):
+            down1=64-mod1
+            x=F.pad(x,(0,0,0,down1),"reflect")
+        if(mod2):
+            down2=64-mod2
+            x=F.pad(x,(0,down2,0,0),"reflect")
+
+        result = self.segmentator(x)
+
+        if(mod1):result=result[:,:,:-down1,:]
+        if(mod2):result=result[:,:,:,:-down2]
+
+        return result
+
+
+class GrandCombine(nn.Module):
+    def __init__(self):
+        super(GrandCombine, self).__init__()
+
+        self.boom = MultiPatchSMP(6)
+
+    def forward(self, x):
+
+        return self.boom(x)
